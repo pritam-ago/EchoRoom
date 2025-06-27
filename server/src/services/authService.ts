@@ -40,7 +40,7 @@ export class AuthService {
 
     // Generate token
     const tokenPayload: TokenPayload = {
-      userId: user._id.toString(),
+      userId: (user._id as any).toString(),
       username: user.username,
       email: user.email,
     };
@@ -49,7 +49,7 @@ export class AuthService {
 
     return {
       user: {
-        id: user._id.toString(),
+        id: (user._id as any).toString(),
         username: user.username,
         email: user.email,
         avatar: user.avatar,
@@ -77,7 +77,7 @@ export class AuthService {
 
     // Generate token
     const tokenPayload: TokenPayload = {
-      userId: user._id.toString(),
+      userId: (user._id as any).toString(),
       username: user.username,
       email: user.email,
     };
@@ -86,7 +86,7 @@ export class AuthService {
 
     return {
       user: {
-        id: user._id.toString(),
+        id: (user._id as any).toString(),
         username: user.username,
         email: user.email,
         avatar: user.avatar,

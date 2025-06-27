@@ -23,7 +23,20 @@ const JoinRoom: React.FC = () => {
       const room = await roomService.joinRoomWithCode(joinCode.toUpperCase());
       navigate(`/room/${room.id}`);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to join room');
+      // Check if it's an approval required error
+      if (err.response?.status === 403 && err.response?.data?.message?.includes('approval')) {
+        // Try to request join instead
+        try {
+          // Get room info by code to get the roomId
+          const roomInfo = await roomService.getRoomByJoinCode(joinCode.toUpperCase());
+          await roomService.requestJoinRoom(roomInfo.id);
+          setError('Join request sent! The room owner will be notified.');
+        } catch (requestErr: any) {
+          setError(requestErr.response?.data?.message || 'Failed to send join request');
+        }
+      } else {
+        setError(err.response?.data?.message || 'Failed to join room');
+      }
     } finally {
       setLoading(false);
     }

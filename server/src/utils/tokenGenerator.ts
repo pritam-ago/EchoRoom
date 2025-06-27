@@ -32,4 +32,14 @@ export const generateRandomString = (length: number = 8): string => {
 
 export const generateRoomId = (): string => {
   return generateRandomString(12);
+};
+
+export const generateJoinCode = (): string => {
+  // Generate a 6-character alphanumeric code, uppercase only for better readability
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
 }; 

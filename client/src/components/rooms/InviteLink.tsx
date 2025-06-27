@@ -51,8 +51,9 @@ const InviteLink: React.FC = () => {
     } catch (err: any) {
       // Check if it's an approval required error
       if (err.response?.status === 403 && err.response?.data?.message?.includes('approval')) {
-        // Try to request join instead
         try {
+          // Get room info by code to get the roomId
+          const roomInfo = await roomService.getRoomByJoinCode(joinCode!);
           await roomService.requestJoinRoom(roomInfo.id);
           setError('Join request sent! The room owner will be notified.');
         } catch (requestErr: any) {

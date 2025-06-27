@@ -20,6 +20,13 @@ export interface IRoom extends Document {
   cursors: IUserCursor[];
   isPublic: boolean;
   isActive: boolean;
+  joinCode?: string;
+  requiresApproval: boolean;
+  pendingRequests: Array<{
+    userId: mongoose.Types.ObjectId;
+    username: string;
+    requestedAt: Date;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -90,6 +97,25 @@ const roomSchema = new Schema<IRoom>({
     type: Boolean,
     default: true,
   },
+  joinCode: {
+    type: String,
+  },
+  requiresApproval: {
+    type: Boolean,
+    default: false,
+  },
+  pendingRequests: [{
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    username: {
+      type: String,
+    },
+    requestedAt: {
+      type: Date,
+    },
+  }],
 }, {
   timestamps: true,
 });

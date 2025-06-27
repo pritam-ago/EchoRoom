@@ -15,5 +15,12 @@ router.patch('/:roomId', authenticateToken, RoomController.updateRoom);
 router.delete('/:roomId', authenticateToken, RoomController.deleteRoom);
 router.post('/:roomId/join', authenticateToken, RoomController.joinRoom);
 router.post('/:roomId/leave', authenticateToken, RoomController.leaveRoom);
+router.post('/:roomId/join-code', authenticateToken, RoomController.generateJoinCode);
+router.post('/join-with-code', authenticateToken, RoomController.joinRoomWithCode);
+router.get('/join-code/:joinCode', optionalAuth, RoomController.getRoomByJoinCode);
+router.post('/:roomId/request-join', authenticateToken, RoomController.requestJoinRoom);
+router.post('/:roomId/approve/:requestUserId', authenticateToken, RoomController.approveJoinRequest);
+router.post('/:roomId/reject/:requestUserId', authenticateToken, RoomController.rejectJoinRequest);
+router.get('/:roomId/pending-requests', authenticateToken, RoomController.getPendingRequests);
 
 export default router; 
