@@ -11,7 +11,7 @@ router.get('/:roomId', optionalAuth, RoomController.getRoom);
 // Protected routes
 router.post('/', authenticateToken, RoomController.createRoom);
 router.get('/user/rooms', authenticateToken, RoomController.getUserRooms);
-router.put('/:roomId', authenticateToken, RoomController.updateRoom);
+router.patch('/:roomId', authenticateToken, RoomController.updateRoom);
 router.delete('/:roomId', authenticateToken, RoomController.deleteRoom);
 router.post('/:roomId/join', authenticateToken, RoomController.joinRoom);
 router.post('/:roomId/leave', authenticateToken, RoomController.leaveRoom);

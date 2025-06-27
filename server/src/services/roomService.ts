@@ -2,6 +2,7 @@ import { Room, IRoom, IUserCursor } from '../models/Room.js';
 import { Session } from '../models/Session.js';
 import { createError } from '../middlewares/errorHandler.js';
 import { generateRoomId } from '../utils/tokenGenerator.js';
+import mongoose from 'mongoose';
 
 export interface CreateRoomData {
   name: string;
@@ -26,7 +27,8 @@ export class RoomService {
   static async createRoom(data: CreateRoomData): Promise<IRoom> {
     const room = new Room({
       ...data,
-      participants: [data.ownerId],
+      owner: new mongoose.Types.ObjectId(data.ownerId),
+      participants: [new mongoose.Types.ObjectId(data.ownerId)],
     });
 
     await room.save();
@@ -102,8 +104,9 @@ export class RoomService {
       throw createError('Room is not active', 400);
     }
 
-    if (!room.participants.includes(userId)) {
-      room.participants.push(userId);
+    const userIdObjectId = new mongoose.Types.ObjectId(userId);
+    if (!room.participants.includes(userIdObjectId)) {
+      room.participants.push(userIdObjectId);
       await room.save();
     }
 
