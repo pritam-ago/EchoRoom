@@ -39,7 +39,8 @@ const JoinRoom: React.FC<JoinRoomProps> = ({ onClose }) => {
         try {
           const roomInfo = await roomService.getRoomByJoinCode(joinCode.toUpperCase());
           await roomService.requestJoinRoom(roomInfo.id);
-          setError('Join request sent! The room owner will be notified.');
+          // Navigate to the room with waiting state - the CodeEditor will handle the waiting room
+          window.location.href = `/room/${roomInfo.id}`;
         } catch (requestErr: any) {
           console.log('Join request error:', requestErr);
           if (requestErr.response) {

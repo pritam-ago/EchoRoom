@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { roomService } from '../../services/roomService';
 import { useAuth } from '../../contexts/AuthContext';
+import WaitingRoom from './WaitingRoom';
 import './Rooms.css';
 
 const InviteLink: React.FC = () => {
@@ -9,6 +10,7 @@ const InviteLink: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [roomInfo, setRoomInfo] = useState<any>(null);
+  const [waitingForApproval, setWaitingForApproval] = useState(false);
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
@@ -57,7 +59,7 @@ const InviteLink: React.FC = () => {
           // Get room info by code to get the roomId
           const roomInfo = await roomService.getRoomByJoinCode(joinCode!);
           await roomService.requestJoinRoom(roomInfo.id);
-          setError('Join request sent! The room owner will be notified.');
+          setWaitingForApproval(true);
         } catch (requestErr: any) {
           setError(requestErr.response?.data?.error || 'Failed to send join request');
         }
@@ -88,6 +90,24 @@ const InviteLink: React.FC = () => {
             Go to Home
           </button>
         </div>
+      </div>
+    );
+  }
+
+  if (waitingForApproval && roomInfo) {
+    return (
+      <div className="invite-link-container">
+        <WaitingRoom
+          roomId={roomInfo.id}
+          onApproved={() => {
+            setWaitingForApproval(false);
+            navigate(`/room/${roomInfo.id}`);
+          }}
+          onRejected={() => {
+            setWaitingForApproval(false);
+            setError('Your join request has been rejected.');
+          }}
+        />
       </div>
     );
   }

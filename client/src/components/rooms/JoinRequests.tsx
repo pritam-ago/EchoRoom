@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { roomService } from '../../services/roomService';
 import { useAuth } from '../../contexts/AuthContext';
+import { io, Socket } from 'socket.io-client';
 import './Rooms.css';
 
 interface JoinRequest {
@@ -20,9 +21,48 @@ const JoinRequests: React.FC<JoinRequestsProps> = ({ roomId, onClose, onRequestH
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const { user } = useAuth();
+  const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
     fetchRequests();
+
+    // Setup socket connection for real-time updates
+    const token = localStorage.getItem('token');
+    const socketInstance = io('http://localhost:3001', {
+      auth: { token }
+    });
+
+    socketInstance.on('connect', () => {
+      console.log('Connected to join requests socket');
+    });
+
+    // Listen for new join requests
+    socketInstance.on('join_request_received', (data) => {
+      console.log('New join request received:', data);
+      // Add the new request to the list
+      setRequests(prev => [...prev, {
+        userId: data.userId,
+        username: data.username,
+        requestedAt: data.requestedAt
+      }]);
+    });
+
+    // Listen for processed requests (when approved/rejected)
+    socketInstance.on('join_request_processed', (data) => {
+      console.log('Join request processed:', data);
+      // Remove the processed request from the list
+      setRequests(prev => prev.filter(req => req.userId !== data.userId));
+    });
+
+    socketInstance.on('error', (data: { message: string }) => {
+      setError(data.message);
+    });
+
+    setSocket(socketInstance);
+
+    return () => {
+      socketInstance.disconnect();
+    };
   }, [roomId]);
 
   const fetchRequests = async () => {
@@ -42,7 +82,13 @@ const JoinRequests: React.FC<JoinRequestsProps> = ({ roomId, onClose, onRequestH
 
   const handleApprove = async (requestUserId: string) => {
     try {
+      console.log('Approved join request:', requestUserId);
+      console.log('Room ID:', roomId);
+      
+      // Call the API - backend will handle socket events
       await roomService.approveJoinRequest(roomId, requestUserId);
+      
+      // Remove from local state
       setRequests(prev => prev.filter(req => req.userId !== requestUserId));
       onRequestHandled();
     } catch (err: any) {
@@ -52,7 +98,10 @@ const JoinRequests: React.FC<JoinRequestsProps> = ({ roomId, onClose, onRequestH
 
   const handleReject = async (requestUserId: string) => {
     try {
+      // Call the API - backend will handle socket events
       await roomService.rejectJoinRequest(roomId, requestUserId);
+      
+      // Remove from local state
       setRequests(prev => prev.filter(req => req.userId !== requestUserId));
       onRequestHandled();
     } catch (err: any) {

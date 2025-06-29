@@ -137,6 +137,16 @@ class RoomService {
     const response = await api.get(`/rooms/${roomId}/pending-requests`);
     return response.data.data;
   }
+
+  async cancelJoinRequest(roomId: string): Promise<{ message: string }> {
+    const response = await api.post(`/rooms/${roomId}/cancel-request`);
+    return { message: response.data.message };
+  }
+
+  async hasPendingRequest(roomId: string): Promise<boolean> {
+    const response = await api.get(`/rooms/${roomId}/has-pending-request`);
+    return response.data.data.hasPending;
+  }
 }
 
 export const roomService = new RoomService(); 

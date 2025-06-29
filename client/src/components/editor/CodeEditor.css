@@ -139,6 +139,36 @@
   background: #b71c1c;
 }
 
+.invite-button {
+  background: #007acc;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.invite-button:hover {
+  background: #005a9e;
+}
+
+.join-requests-button {
+  background: #ff9800;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.join-requests-button:hover {
+  background: #f57c00;
+}
+
 .editor-main {
   flex: 1;
   overflow: hidden;
@@ -188,6 +218,37 @@
 
 .monaco-editor .overflow-guard {
   border-radius: 0;
+}
+
+/* Waiting Modal Styles */
+.waiting-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.waiting-content {
+  background: #2d2d30;
+  border: 1px solid #3e3e42;
+  border-radius: 12px;
+  padding: 40px;
+  text-align: center;
+  max-width: 400px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.waiting-content h2 {
+  color: #cccccc;
+  margin: 0 0 20px 0;
+  font-size: 20px;
+  font-weight: 600;
 }
 
 /* Responsive Design */

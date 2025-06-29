@@ -263,22 +263,24 @@ export class RoomService {
 
   static async requestToJoinRoom(data: JoinRequestData): Promise<{ message: string }> {
     const { roomId, userId, username } = data;
-    const room = await Room.findById(roomId);
     
-    if (!room) {
+    // First check if room exists and is valid for requests
+    const roomCheck = await Room.findById(roomId);
+    
+    if (!roomCheck) {
       throw createError('Room not found', 404);
     }
 
-    if (!room.isActive) {
+    if (!roomCheck.isActive) {
       throw createError('Room is not active', 400);
     }
 
-    if (room.roomType !== RoomType.REQUEST_TO_JOIN) {
+    if (roomCheck.roomType !== RoomType.REQUEST_TO_JOIN) {
       throw createError('This room does not require join requests', 400);
     }
 
     // Check if user is already a participant
-    const isAlreadyParticipant = room.participants.some(
+    const isAlreadyParticipant = roomCheck.participants.some(
       participant => participant.toString() === userId
     );
     
@@ -286,22 +288,40 @@ export class RoomService {
       return { message: 'You are already a participant in this room' };
     }
 
-    // Check if user already has a pending request
-    const existingRequest = room.pendingRequests.find(
-      request => request.userId.toString() === userId
+    // Use atomic operation to add request and prevent duplicates
+    const room = await Room.findOneAndUpdate(
+      {
+        _id: roomId,
+        isActive: true,
+        roomType: RoomType.REQUEST_TO_JOIN,
+        participants: { $ne: userId },
+        'pendingRequests.userId': { $ne: userId }
+      },
+      {
+        $push: {
+          pendingRequests: {
+            userId: new mongoose.Types.ObjectId(userId),
+            username,
+            requestedAt: new Date()
+          }
+        }
+      },
+      { new: true }
     );
-    if (existingRequest) {
-      throw createError('You already have a pending request for this room', 400);
+
+    if (!room) {
+      // Check if it's because user already has a pending request
+      const existingRoom = await Room.findOne({
+        _id: roomId,
+        'pendingRequests.userId': userId
+      });
+      
+      if (existingRoom) {
+        throw createError('You already have a pending request for this room', 400);
+      }
+      
+      throw createError('Unable to send join request', 400);
     }
-
-    // Add to pending requests
-    room.pendingRequests.push({
-      userId: new mongoose.Types.ObjectId(userId),
-      username,
-      requestedAt: new Date()
-    });
-
-    await room.save();
 
     // Emit real-time event to room owner
     socketManager.getIO().to(room.owner.toString()).emit('join_request_received', {
@@ -315,38 +335,23 @@ export class RoomService {
   }
 
   static async approveJoinRequest(roomId: string, ownerId: string, requestUserId: string): Promise<IRoom> {
-    const room = await Room.findById(roomId);
+    // Use atomic operation to prevent concurrency issues
+    const room = await Room.findOneAndUpdate(
+      {
+        _id: roomId,
+        owner: ownerId,
+        'pendingRequests.userId': new mongoose.Types.ObjectId(requestUserId)
+      },
+      {
+        $pull: { pendingRequests: { userId: new mongoose.Types.ObjectId(requestUserId) } },
+        $addToSet: { participants: new mongoose.Types.ObjectId(requestUserId) }
+      },
+      { new: true }
+    );
     
     if (!room) {
-      throw createError('Room not found', 404);
+      throw createError('Room not found or join request not found', 404);
     }
-
-    if (room.owner.toString() !== ownerId) {
-      throw createError('Only room owner can approve requests', 403);
-    }
-
-    // Find and remove the request
-    const requestIndex = room.pendingRequests.findIndex(
-      request => request.userId.toString() === requestUserId
-    );
-    
-    if (requestIndex === -1) {
-      throw createError('Join request not found', 404);
-    }
-
-    // Remove from pending requests
-    room.pendingRequests.splice(requestIndex, 1);
-    
-    // Add to participants
-    const isAlreadyParticipant = room.participants.some(
-      participant => participant.toString() === requestUserId
-    );
-    
-    if (!isAlreadyParticipant) {
-      room.participants.push(new mongoose.Types.ObjectId(requestUserId));
-    }
-
-    await room.save();
 
     // Create session for the approved user
     await this.createOrUpdateSession(requestUserId, roomId);
@@ -369,28 +374,22 @@ export class RoomService {
   }
 
   static async rejectJoinRequest(roomId: string, ownerId: string, requestUserId: string): Promise<{ message: string }> {
-    const room = await Room.findById(roomId);
-    
-    if (!room) {
-      throw createError('Room not found', 404);
-    }
-
-    if (room.owner.toString() !== ownerId) {
-      throw createError('Only room owner can reject requests', 403);
-    }
-
-    // Find and remove the request
-    const requestIndex = room.pendingRequests.findIndex(
-      request => request.userId.toString() === requestUserId
+    // Use atomic operation to prevent concurrency issues
+    const room = await Room.findOneAndUpdate(
+      {
+        _id: roomId,
+        owner: ownerId,
+        'pendingRequests.userId': new mongoose.Types.ObjectId(requestUserId)
+      },
+      {
+        $pull: { pendingRequests: { userId: new mongoose.Types.ObjectId(requestUserId) } }
+      },
+      { new: true }
     );
     
-    if (requestIndex === -1) {
-      throw createError('Join request not found', 404);
+    if (!room) {
+      throw createError('Room not found or join request not found', 404);
     }
-
-    // Remove from pending requests
-    room.pendingRequests.splice(requestIndex, 1);
-    await room.save();
 
     // Emit real-time events
     socketManager.getIO().to(requestUserId).emit('join_request_rejected', {
@@ -408,6 +407,33 @@ export class RoomService {
     return { message: 'Join request rejected' };
   }
 
+  static async cancelJoinRequest(roomId: string, userId: string): Promise<{ message: string }> {
+    // Use atomic operation to prevent concurrency issues
+    const room = await Room.findOneAndUpdate(
+      {
+        _id: roomId,
+        'pendingRequests.userId': new mongoose.Types.ObjectId(userId)
+      },
+      {
+        $pull: { pendingRequests: { userId: new mongoose.Types.ObjectId(userId) } }
+      },
+      { new: true }
+    );
+    
+    if (!room) {
+      throw createError('Room not found or join request not found', 404);
+    }
+
+    // Notify room owner that request was cancelled
+    socketManager.getIO().to(room.owner.toString()).emit('join_request_processed', {
+      roomId,
+      userId,
+      action: 'cancelled'
+    });
+    
+    return { message: 'Join request cancelled successfully' };
+  }
+
   static async getPendingRequests(roomId: string, userId: string): Promise<any[]> {
     const room = await Room.findById(roomId)
       .populate('pendingRequests.userId', 'username email avatar');
@@ -423,19 +449,38 @@ export class RoomService {
     return room.pendingRequests;
   }
 
-  static async leaveRoom(roomId: string, userId: string): Promise<void> {
+  static async hasPendingRequest(roomId: string, userId: string): Promise<boolean> {
     const room = await Room.findById(roomId);
     
     if (!room) {
       throw createError('Room not found', 404);
     }
 
-    // Remove from participants if not owner
-    if (room.owner.toString() !== userId) {
-      room.participants = room.participants.filter(
-        (participant) => participant.toString() !== userId
-      );
-      await room.save();
+    return room.pendingRequests.some((req: any) => 
+      req.userId.toString() === userId
+    );
+  }
+
+  static async leaveRoom(roomId: string, userId: string): Promise<void> {
+    // Use atomic operation to prevent concurrency issues
+    const room = await Room.findOneAndUpdate(
+      {
+        _id: roomId,
+        owner: { $ne: userId } // Only allow non-owners to leave
+      },
+      {
+        $pull: { participants: userId }
+      },
+      { new: true }
+    );
+
+    if (!room) {
+      // Check if user is the owner
+      const ownerCheck = await Room.findOne({ _id: roomId, owner: userId });
+      if (ownerCheck) {
+        throw createError('Room owner cannot leave the room', 400);
+      }
+      throw createError('Room not found', 404);
     }
 
     // Update session
@@ -446,58 +491,52 @@ export class RoomService {
   }
 
   static async updateCode(roomId: string, code: string): Promise<IRoom> {
-    const room = await Room.findById(roomId);
+    const room = await Room.findOneAndUpdate(
+      { _id: roomId },
+      { code },
+      { new: true }
+    );
     
     if (!room) {
       throw createError('Room not found', 404);
     }
-
-    room.code = code;
-    await room.save();
     
     return room;
   }
 
   static async updateCursor(roomId: string, cursor: IUserCursor): Promise<IRoom> {
-    const room = await Room.findById(roomId);
+    const room = await Room.findOneAndUpdate(
+      { _id: roomId },
+      {
+        $pull: { cursors: { userId: cursor.userId } },
+        $push: { cursors: cursor }
+      },
+      { new: true }
+    );
     
     if (!room) {
       throw createError('Room not found', 404);
     }
-
-    const existingCursorIndex = room.cursors.findIndex(
-      (c) => c.userId === cursor.userId
-    );
-
-    if (existingCursorIndex >= 0) {
-      room.cursors[existingCursorIndex] = cursor;
-    } else {
-      room.cursors.push(cursor);
-    }
-
-    await room.save();
+    
     return room;
   }
 
   static async removeCursor(roomId: string, userId: string): Promise<IRoom | null> {
-    const room = await Room.findById(roomId);
-    if (!room) {
-      return null;
-    }
-    room.cursors = room.cursors.filter((c) => c.userId !== userId);
-    await room.save();
+    const room = await Room.findOneAndUpdate(
+      { _id: roomId },
+      { $pull: { cursors: { userId } } },
+      { new: true }
+    );
+    
     return room;
   }
 
   static async generateJoinCode(roomId: string, userId: string): Promise<{ joinCode: string }> {
-    const room = await Room.findById(roomId);
+    // First check if user is the owner
+    const roomCheck = await Room.findOne({ _id: roomId, owner: userId });
     
-    if (!room) {
-      throw createError('Room not found', 404);
-    }
-
-    if (room.owner.toString() !== userId) {
-      throw createError('Only room owner can generate join codes', 403);
+    if (!roomCheck) {
+      throw createError('Room not found or you are not the owner', 404);
     }
 
     // Generate a unique join code
@@ -512,8 +551,16 @@ export class RoomService {
       }
     }
 
-    room.joinCode = joinCode!;
-    await room.save();
+    // Use atomic operation to update the join code
+    const room = await Room.findOneAndUpdate(
+      { _id: roomId, owner: userId },
+      { joinCode: joinCode! },
+      { new: true }
+    );
+    
+    if (!room) {
+      throw createError('Failed to generate join code', 500);
+    }
     
     return { joinCode: joinCode! };
   }

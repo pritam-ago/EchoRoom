@@ -21,6 +21,8 @@ router.get('/join-code/:joinCode', optionalAuth, RoomController.getRoomByJoinCod
 router.post('/:roomId/request-to-join', authenticateToken, RoomController.requestToJoinRoom);
 router.post('/:roomId/approve/:requestUserId', authenticateToken, RoomController.approveJoinRequest);
 router.post('/:roomId/reject/:requestUserId', authenticateToken, RoomController.rejectJoinRequest);
+router.post('/:roomId/cancel-request', authenticateToken, RoomController.cancelJoinRequest);
 router.get('/:roomId/pending-requests', authenticateToken, RoomController.getPendingRequests);
+router.get('/:roomId/has-pending-request', authenticateToken, RoomController.hasPendingRequest);
 
 export default router; 

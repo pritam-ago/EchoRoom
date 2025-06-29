@@ -354,4 +354,42 @@ export class RoomController {
       next(error);
     }
   }
+
+  static async cancelJoinRequest(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw createError('User not authenticated', 401);
+      }
+
+      const { roomId } = req.params;
+      const result = await RoomService.cancelJoinRequest(roomId, userId);
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async hasPendingRequest(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw createError('User not authenticated', 401);
+      }
+
+      const { roomId } = req.params;
+      const hasPending = await RoomService.hasPendingRequest(roomId, userId);
+
+      res.status(200).json({
+        success: true,
+        data: { hasPending },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 } 

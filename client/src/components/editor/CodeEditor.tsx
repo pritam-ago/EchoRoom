@@ -6,6 +6,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { roomService, Room } from '../../services/roomService';
 import JoinRequests from '../rooms/JoinRequests';
 import RoomInvite from '../rooms/RoomInvite';
+import WaitingRoom from '../rooms/WaitingRoom';
+import Notification from '../rooms/Notification';
 import './CodeEditor.css';
 
 interface Participant {
@@ -25,6 +27,12 @@ interface RoomData {
   roomType: 'public' | 'private' | 'request_to_join';
 }
 
+interface NotificationItem {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
 const CodeEditor: React.FC = () => {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
@@ -41,10 +49,22 @@ const CodeEditor: React.FC = () => {
   const [showInvite, setShowInvite] = useState(false);
   const [waitingForApproval, setWaitingForApproval] = useState(false);
   const [approvalMessage, setApprovalMessage] = useState('');
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   
   const socketRef = useRef<Socket | null>(null);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+
+  // Add notification function
+  const addNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Date.now().toString();
+    setNotifications(prev => [...prev, { id, message, type }]);
+  };
+
+  // Remove notification function
+  const removeNotification = (id: string) => {
+    setNotifications(prev => prev.filter(notification => notification.id !== id));
+  };
 
   useEffect(() => {
     if (!roomId || !user) return;
@@ -93,10 +113,20 @@ const CodeEditor: React.FC = () => {
         }
         return prev;
       });
+      
+      // Show notification for room owner when someone joins
+      if (isRoomOwner) {
+        addNotification(`${data.username} joined the room`, 'success');
+      }
     });
 
     socket.on('user-left', (data: { userId: string; username: string }) => {
       setParticipants(prev => prev.filter(p => p.userId !== data.userId));
+      
+      // Show notification for room owner when someone leaves
+      if (isRoomOwner) {
+        addNotification(`${data.username} left the room`, 'info');
+      }
     });
 
     socket.on('cursor-updated', (cursor: Participant) => {
@@ -106,31 +136,52 @@ const CodeEditor: React.FC = () => {
     });
 
     // Real-time join request for host
-    socket.on('join_request', (data) => {
+    socket.on('join_request_received', (data) => {
       if (isRoomOwner) {
         setPendingRequestsCount(prev => prev + 1);
+        addNotification(`New join request from ${data.username}`, 'info');
+        console.log('New join request received:', data);
       }
     });
 
     // Real-time approval for waiting user
-    socket.on('join_approved', (data) => {
+    socket.on('join_request_approved', (data) => {
+      console.log('Join request approved:', data);
       setWaitingForApproval(false);
       setApprovalMessage('Your join request has been approved! Redirecting...');
+      
+      // Show success notification
+      addNotification('Your join request has been approved!', 'success');
+      
       setTimeout(() => {
         setApprovalMessage('');
-        // Optionally reload or navigate to editor
-        window.location.reload();
+        // Navigate to the room
+        window.location.href = `/room/${data.roomId}`;
       }, 1500);
     });
 
     // Real-time rejection for waiting user
-    socket.on('join_rejected', (data) => {
+    socket.on('join_request_rejected', (data) => {
+      console.log('Join request rejected:', data);
       setWaitingForApproval(false);
       setApprovalMessage('Your join request has been rejected.');
+      addNotification('Your join request has been rejected.', 'error');
+    });
+
+    // Real-time notification for room owner when request is processed
+    socket.on('join_request_processed', (data) => {
+      if (isRoomOwner) {
+        setPendingRequestsCount(prev => Math.max(0, prev - 1));
+        const action = data.action === 'approved' ? 'approved' : 
+                      data.action === 'rejected' ? 'rejected' : 'cancelled';
+        addNotification(`Join request ${action}`, 'info');
+        console.log('Join request processed:', data);
+      }
     });
 
     socket.on('error', (data: { message: string }) => {
       setError(data.message);
+      addNotification(data.message, 'error');
     });
 
     // Fetch room data
@@ -163,8 +214,34 @@ const CodeEditor: React.FC = () => {
       const ownerId = roomData.owner?._id;
       setIsRoomOwner(ownerId === user?.id);
       
+      // Check if user is a participant
+      const isParticipant = roomData.participants?.some((p: any) => 
+        (typeof p === 'string' ? p : p._id || p.userId) === user?.id
+      );
+      
+      // If user is not the owner and not a participant, they might be waiting for approval
+      if (!isRoomOwner && !isParticipant) {
+        // Check if user has a pending join request
+        try {
+          const hasPendingRequest = await roomService.hasPendingRequest(roomId!);
+          
+          if (hasPendingRequest) {
+            setWaitingForApproval(true);
+            setLoading(false);
+            return;
+          }
+        } catch (err) {
+          // If we can't check pending requests, assume they need to wait for approval
+          if (roomData.roomType === 'request_to_join') {
+            setWaitingForApproval(true);
+            setLoading(false);
+            return;
+          }
+        }
+      }
+      
       // If user is owner, fetch pending requests count
-      if (ownerId === user?.id) {
+      if (isRoomOwner) {
         try {
           const requests = await roomService.getPendingRequests(roomId!);
           setPendingRequestsCount(requests.length);
@@ -173,6 +250,8 @@ const CodeEditor: React.FC = () => {
           console.log('Could not fetch pending requests');
         }
       }
+      
+      setLoading(false);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to fetch room data');
       setLoading(false);
@@ -247,12 +326,17 @@ const CodeEditor: React.FC = () => {
   if (waitingForApproval) {
     return (
       <div className="editor-container">
-        <div className="waiting-modal">
-          <div className="waiting-content">
-            <h2>Waiting for Approval...</h2>
-            <p>Your request to join the room has been sent. Please wait for the host to approve.</p>
-          </div>
-        </div>
+        <WaitingRoom
+          roomId={roomId!}
+          onApproved={() => {
+            setWaitingForApproval(false);
+            window.location.href = `/room/${roomId}`;
+          }}
+          onRejected={() => {
+            setWaitingForApproval(false);
+            setApprovalMessage('Your join request has been rejected.');
+          }}
+        />
       </div>
     );
   }
@@ -271,6 +355,16 @@ const CodeEditor: React.FC = () => {
 
   return (
     <div className="editor-container">
+      {/* Notifications */}
+      {notifications.map(notification => (
+        <Notification
+          key={notification.id}
+          message={notification.message}
+          type={notification.type}
+          onClose={() => removeNotification(notification.id)}
+        />
+      ))}
+
       <header className="editor-header">
         <div className="header-left">
           <h1>{room?.name || 'Code Editor'}</h1>
