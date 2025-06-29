@@ -22,7 +22,7 @@ interface RoomData {
   code: string;
   participants: Participant[];
   createdAt: string;
-  isPrivate: boolean;
+  roomType: 'public' | 'private' | 'request_to_join';
 }
 
 const CodeEditor: React.FC = () => {
@@ -39,6 +39,8 @@ const CodeEditor: React.FC = () => {
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
   const [isRoomOwner, setIsRoomOwner] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
+  const [waitingForApproval, setWaitingForApproval] = useState(false);
+  const [approvalMessage, setApprovalMessage] = useState('');
   
   const socketRef = useRef<Socket | null>(null);
   const editorRef = useRef<any>(null);
@@ -46,6 +48,9 @@ const CodeEditor: React.FC = () => {
 
   useEffect(() => {
     if (!roomId || !user) return;
+
+    // Debug: Log the roomId being used
+    console.log('CodeEditor: roomId from URL params:', roomId);
 
     // Initialize socket connection
     const token = localStorage.getItem('token');
@@ -100,10 +105,28 @@ const CodeEditor: React.FC = () => {
       );
     });
 
-    socket.on('join-request-received', () => {
+    // Real-time join request for host
+    socket.on('join_request', (data) => {
       if (isRoomOwner) {
         setPendingRequestsCount(prev => prev + 1);
       }
+    });
+
+    // Real-time approval for waiting user
+    socket.on('join_approved', (data) => {
+      setWaitingForApproval(false);
+      setApprovalMessage('Your join request has been approved! Redirecting...');
+      setTimeout(() => {
+        setApprovalMessage('');
+        // Optionally reload or navigate to editor
+        window.location.reload();
+      }, 1500);
+    });
+
+    // Real-time rejection for waiting user
+    socket.on('join_rejected', (data) => {
+      setWaitingForApproval(false);
+      setApprovalMessage('Your join request has been rejected.');
     });
 
     socket.on('error', (data: { message: string }) => {
@@ -119,7 +142,7 @@ const CodeEditor: React.FC = () => {
         socket.disconnect();
       }
     };
-  }, [roomId, user]);
+  }, [roomId, user, isRoomOwner]);
 
   const fetchRoomData = async () => {
     try {
@@ -132,7 +155,7 @@ const CodeEditor: React.FC = () => {
         code: roomData.code,
         participants: [], // Initialize with empty array, will be populated by socket events
         createdAt: roomData.createdAt,
-        isPrivate: roomData.isPrivate
+        roomType: roomData.roomType
       };
       setRoom(transformedRoom);
       
@@ -151,7 +174,7 @@ const CodeEditor: React.FC = () => {
         }
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to fetch room data');
+      setError(err.response?.data?.error || 'Failed to fetch room data');
       setLoading(false);
     }
   };
@@ -217,6 +240,31 @@ const CodeEditor: React.FC = () => {
         <button onClick={() => navigate('/')} className="back-button">
           Back to Rooms
         </button>
+      </div>
+    );
+  }
+
+  if (waitingForApproval) {
+    return (
+      <div className="editor-container">
+        <div className="waiting-modal">
+          <div className="waiting-content">
+            <h2>Waiting for Approval...</h2>
+            <p>Your request to join the room has been sent. Please wait for the host to approve.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (approvalMessage) {
+    return (
+      <div className="editor-container">
+        <div className="waiting-modal">
+          <div className="waiting-content">
+            <h2>{approvalMessage}</h2>
+          </div>
+        </div>
       </div>
     );
   }

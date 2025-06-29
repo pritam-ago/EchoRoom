@@ -7,7 +7,7 @@ import { SocketManager } from './sockets/socketManager.js';
 const server = createServer(app);
 
 // Initialize Socket.IO
-const socketManager = new SocketManager(server);
+export const socketManager = new SocketManager(server);
 
 // Graceful shutdown handling
 const gracefulShutdown = async (signal: string) => {

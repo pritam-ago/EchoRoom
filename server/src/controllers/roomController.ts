@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { RoomService } from '../services/roomService.js';
+import { RoomService, RoomType } from '../services/roomService.js';
 import { validateRequest, roomValidation } from '../utils/validation.js';
 import { createError } from '../middlewares/errorHandler.js';
 import { AuthenticatedRequest } from '../middlewares/auth.js';
@@ -13,18 +13,37 @@ export class RoomController {
       }
 
       const validatedData = validateRequest(roomValidation.create, req.body);
+      
+      // Convert room type from string to enum
+      let roomType: RoomType;
+      switch (validatedData.roomType) {
+        case 'public':
+          roomType = RoomType.PUBLIC;
+          break;
+        case 'private':
+          roomType = RoomType.PRIVATE;
+          break;
+        case 'request_to_join':
+          roomType = RoomType.REQUEST_TO_JOIN;
+          break;
+        default:
+          throw createError('Invalid room type', 400);
+      }
+
       const room = await RoomService.createRoom({
         name: validatedData.name,
         description: validatedData.description,
         language: validatedData.language,
-        isPublic: !validatedData.isPrivate,
-        requiresApproval: validatedData.requiresApproval,
+        roomType,
         ownerId: userId,
       });
 
       res.status(201).json({
         success: true,
-        data: room,
+        data: {
+          ...room.toObject(),
+          id: (room as any)._id.toString(),
+        },
       });
     } catch (error) {
       next(error);
@@ -89,6 +108,24 @@ export class RoomController {
 
       const { roomId } = req.params;
       const validatedData = validateRequest(roomValidation.update, req.body);
+      
+      // Convert room type if provided
+      if (validatedData.roomType) {
+        switch (validatedData.roomType) {
+          case 'public':
+            validatedData.roomType = RoomType.PUBLIC;
+            break;
+          case 'private':
+            validatedData.roomType = RoomType.PRIVATE;
+            break;
+          case 'request_to_join':
+            validatedData.roomType = RoomType.REQUEST_TO_JOIN;
+            break;
+          default:
+            throw createError('Invalid room type', 400);
+        }
+      }
+
       const room = await RoomService.updateRoom(roomId, userId, validatedData);
 
       res.status(200).json({
@@ -127,12 +164,21 @@ export class RoomController {
       }
 
       const { roomId } = req.params;
-      const room = await RoomService.joinRoom(roomId, userId);
+      const result = await RoomService.joinRoom(roomId, userId);
 
-      res.status(200).json({
-        success: true,
-        data: room,
-      });
+      if (result.success) {
+        res.status(200).json({
+          success: true,
+          data: result.room,
+          message: result.message,
+        });
+      } else {
+        res.status(403).json({
+          success: false,
+          message: result.message,
+          requiresApproval: result.requiresApproval,
+        });
+      }
     } catch (error) {
       next(error);
     }
@@ -188,12 +234,21 @@ export class RoomController {
         throw createError('Join code is required', 400);
       }
 
-      const room = await RoomService.joinRoomWithCode(joinCode, userId);
+      const result = await RoomService.joinRoomWithCode(joinCode, userId);
 
-      res.status(200).json({
-        success: true,
-        data: room,
-      });
+      if (result.success) {
+        res.status(200).json({
+          success: true,
+          data: result.room,
+          message: result.message,
+        });
+      } else {
+        res.status(403).json({
+          success: false,
+          message: result.message,
+          requiresApproval: result.requiresApproval,
+        });
+      }
     } catch (error) {
       next(error);
     }
@@ -217,20 +272,25 @@ export class RoomController {
     }
   }
 
-  static async requestJoinRoom(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  static async requestToJoinRoom(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = req.user?.userId;
-      const username = req.user?.username;
-      if (!userId || !username) {
+      if (!userId) {
         throw createError('User not authenticated', 401);
       }
 
       const { roomId } = req.params;
-      const result = await RoomService.requestJoinRoom(roomId, userId, username);
+      const username = req.user?.username || 'Unknown User';
+      
+      const result = await RoomService.requestToJoinRoom({
+        roomId,
+        userId,
+        username
+      });
 
       res.status(200).json({
         success: true,
-        data: result,
+        message: result.message,
       });
     } catch (error) {
       next(error);
@@ -250,6 +310,7 @@ export class RoomController {
       res.status(200).json({
         success: true,
         data: room,
+        message: 'Join request approved successfully',
       });
     } catch (error) {
       next(error);
@@ -268,7 +329,7 @@ export class RoomController {
 
       res.status(200).json({
         success: true,
-        data: result,
+        message: result.message,
       });
     } catch (error) {
       next(error);

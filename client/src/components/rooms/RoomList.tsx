@@ -16,7 +16,7 @@ interface Room {
     avatar?: string;
   }>;
   createdAt: string;
-  isPrivate: boolean;
+  roomType: 'public' | 'private' | 'request_to_join';
 }
 
 const RoomList: React.FC = () => {
@@ -35,7 +35,7 @@ const RoomList: React.FC = () => {
       const roomsData = await roomService.getRooms();
       setRooms(roomsData);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to fetch rooms');
+      setError(err.response?.data?.error || 'Failed to fetch rooms');
     } finally {
       setLoading(false);
     }
@@ -116,7 +116,7 @@ const RoomList: React.FC = () => {
       </main>
 
       {showJoinModal && (
-        <JoinRoom />
+        <JoinRoom onClose={() => setShowJoinModal(false)} />
       )}
     </div>
   );

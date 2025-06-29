@@ -17,6 +17,19 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export interface Room {
   id: string;
   _id?: string;
@@ -36,8 +49,7 @@ export interface Room {
     avatar?: string;
   };
   createdAt: string;
-  isPrivate: boolean;
-  requiresApproval?: boolean;
+  roomType: 'public' | 'private' | 'request_to_join';
 }
 
 export interface CreateRoomData {
@@ -57,11 +69,18 @@ class RoomService {
   }
 
   async createRoom(data: CreateRoomData): Promise<Room> {
+    // Map boolean fields to roomType enum
+    let roomType = 'public'; // default
+    if (data.requiresApproval) {
+      roomType = 'request_to_join';
+    } else if (data.isPrivate) {
+      roomType = 'private';
+    }
+
     const response = await api.post('/rooms', {
       name: data.name,
       language: data.language,
-      isPrivate: data.isPrivate,
-      requiresApproval: data.requiresApproval
+      roomType: roomType
     });
     const room = response.data.data;
     return { ...room, id: (room.id || room._id || '') as string };
@@ -99,8 +118,8 @@ class RoomService {
   }
 
   async requestJoinRoom(roomId: string): Promise<{ message: string }> {
-    const response = await api.post(`/rooms/${roomId}/request-join`);
-    return response.data.data;
+    const response = await api.post(`/rooms/${roomId}/request-to-join`);
+    return { message: response.data.message };
   }
 
   async approveJoinRequest(roomId: string, requestUserId: string): Promise<Room> {
@@ -111,7 +130,7 @@ class RoomService {
 
   async rejectJoinRequest(roomId: string, requestUserId: string): Promise<{ message: string }> {
     const response = await api.post(`/rooms/${roomId}/reject/${requestUserId}`);
-    return response.data.data;
+    return { message: response.data.message };
   }
 
   async getPendingRequests(roomId: string): Promise<any[]> {

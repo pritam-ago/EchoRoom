@@ -10,6 +10,12 @@ export interface IUserCursor {
   color: string;
 }
 
+export enum RoomType {
+  PUBLIC = 'public',
+  PRIVATE = 'private',
+  REQUEST_TO_JOIN = 'request_to_join'
+}
+
 export interface IRoom extends Document {
   name: string;
   description?: string;
@@ -18,10 +24,9 @@ export interface IRoom extends Document {
   code: string;
   language: string;
   cursors: IUserCursor[];
-  isPublic: boolean;
+  roomType: RoomType;
   isActive: boolean;
   joinCode?: string;
-  requiresApproval: boolean;
   pendingRequests: Array<{
     userId: mongoose.Types.ObjectId;
     username: string;
@@ -89,9 +94,10 @@ const roomSchema = new Schema<IRoom>({
     default: 'javascript',
   },
   cursors: [userCursorSchema],
-  isPublic: {
-    type: Boolean,
-    default: true,
+  roomType: {
+    type: String,
+    enum: Object.values(RoomType),
+    default: RoomType.PUBLIC,
   },
   isActive: {
     type: Boolean,
@@ -99,10 +105,6 @@ const roomSchema = new Schema<IRoom>({
   },
   joinCode: {
     type: String,
-  },
-  requiresApproval: {
-    type: Boolean,
-    default: false,
   },
   pendingRequests: [{
     userId: {
@@ -122,6 +124,6 @@ const roomSchema = new Schema<IRoom>({
 
 // Index for better query performance
 roomSchema.index({ owner: 1, isActive: 1 });
-roomSchema.index({ isPublic: 1, isActive: 1 });
+roomSchema.index({ roomType: 1, isActive: 1 });
 
 export const Room = mongoose.model<IRoom>('Room', roomSchema); 

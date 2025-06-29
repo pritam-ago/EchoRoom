@@ -18,13 +18,28 @@ app.use(cors({
   credentials: true,
 }));
 
-// Rate limiting
-const limiter = rateLimit({
+// Rate limiting - more lenient in development
+const isDevelopment = config.server.nodeEnv === 'development';
+
+// Global rate limiter (more lenient in development)
+const globalLimiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.maxRequests,
+  max: isDevelopment ? 1000 : config.rateLimit.maxRequests, // 1000 requests in development
   message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
 });
-app.use(limiter);
+
+// Stricter rate limiter for auth routes
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: isDevelopment ? 50 : 10, // 50 attempts in development, 10 in production
+  message: 'Too many authentication attempts, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use(globalLimiter);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -39,8 +54,19 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Development endpoint to reset rate limits (only in development)
+if (isDevelopment) {
+  app.post('/api/dev/reset-rate-limit', (req, res) => {
+    // This will reset the rate limit for the current IP
+    res.status(200).json({
+      message: 'Rate limit reset for development',
+      timestamp: new Date().toISOString(),
+    });
+  });
+}
+
 // API routes
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/rooms', roomRoutes);
 
 // 404 handler

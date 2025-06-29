@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { roomService } from '../../services/roomService';
 import './Rooms.css';
+import { roomService } from '../../services/roomService';
 
-const JoinRoom: React.FC = () => {
+interface JoinRoomProps {
+  onClose: () => void;
+}
+
+const JoinRoom: React.FC<JoinRoomProps> = ({ onClose }) => {
   const [joinCode, setJoinCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const navigate = useNavigate();
+  const [alreadyParticipantRoomId, setAlreadyParticipantRoomId] = useState<string | null>(null);
 
   const handleJoinWithCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,24 +21,44 @@ const JoinRoom: React.FC = () => {
 
     setLoading(true);
     setError('');
+    setAlreadyParticipantRoomId(null);
 
     try {
       const room = await roomService.joinRoomWithCode(joinCode.toUpperCase());
-      navigate(`/room/${room.id}`);
+      window.location.href = `/room/${room.id}`;
     } catch (err: any) {
-      // Check if it's an approval required error
-      if (err.response?.status === 403 && err.response?.data?.message?.includes('approval')) {
-        // Try to request join instead
+      console.log('Join room error:', err);
+      if (err.response) {
+        console.log('Backend error response:', err.response.data);
+      }
+      
+      // Check if the room requires approval
+      if (err.response?.status === 403 && 
+          (err.response?.data?.requiresApproval || 
+           err.response?.data?.message?.includes('approval'))) {
         try {
-          // Get room info by code to get the roomId
           const roomInfo = await roomService.getRoomByJoinCode(joinCode.toUpperCase());
           await roomService.requestJoinRoom(roomInfo.id);
           setError('Join request sent! The room owner will be notified.');
         } catch (requestErr: any) {
-          setError(requestErr.response?.data?.message || 'Failed to send join request');
+          console.log('Join request error:', requestErr);
+          if (requestErr.response) {
+            console.log('Backend join request error response:', requestErr.response.data);
+          }
+          if (requestErr.response?.data?.error?.includes('already a participant')) {
+            const roomInfo = await roomService.getRoomByJoinCode(joinCode.toUpperCase());
+            setAlreadyParticipantRoomId(roomInfo.id);
+            setError('You are already a participant in this room.');
+          } else {
+            setError(requestErr.response?.data?.error || 'Failed to send join request');
+          }
         }
+      } else if (err.response?.data?.error?.includes('already a participant')) {
+        const roomInfo = await roomService.getRoomByJoinCode(joinCode.toUpperCase());
+        setAlreadyParticipantRoomId(roomInfo.id);
+        setError('You are already a participant in this room.');
       } else {
-        setError(err.response?.data?.message || 'Failed to join room');
+        setError(err.response?.data?.message || err.response?.data?.error || 'Failed to join room');
       }
     } finally {
       setLoading(false);
@@ -52,7 +75,7 @@ const JoinRoom: React.FC = () => {
   };
 
   const handleClose = () => {
-    navigate('/');
+    onClose();
   };
 
   const handleBackdropClick = (e: React.MouseEvent) => {
@@ -96,6 +119,15 @@ const JoinRoom: React.FC = () => {
           </div>
 
           {error && <div className="error-message">{error}</div>}
+          {alreadyParticipantRoomId && (
+            <button
+              type="button"
+              className="join-button"
+              onClick={() => window.location.href = `/room/${alreadyParticipantRoomId}`}
+            >
+              Go to Room
+            </button>
+          )}
 
           <button
             type="submit"

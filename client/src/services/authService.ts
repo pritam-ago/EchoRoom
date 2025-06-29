@@ -19,6 +19,21 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Handle 401 responses by removing token
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      // Redirect to login page if we're not already there
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export interface User {
   id: string;
   username: string;
@@ -47,8 +62,14 @@ class AuthService {
   }
 
   async logout(): Promise<void> {
-    await api.post('/auth/logout');
-    localStorage.removeItem('token');
+    try {
+      await api.post('/auth/logout');
+    } catch (error) {
+      // Even if logout fails on server, remove token locally
+      console.error('Logout error:', error);
+    } finally {
+      localStorage.removeItem('token');
+    }
   }
 }
 

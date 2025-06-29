@@ -71,29 +71,141 @@ export class SocketManager {
           const { roomId } = data;
           const user = socket.data.user;
 
-          // Join the room
-          await RoomService.joinRoom(roomId, user.userId);
-          socket.join(roomId);
-          socket.data.roomId = roomId;
+          // Try to join the room
+          const result = await RoomService.joinRoom(roomId, user.userId);
+          
+          if (result.success) {
+            // Join the socket room
+            socket.join(roomId);
+            socket.data.roomId = roomId;
 
-          // Notify others in the room
-          socket.to(roomId).emit('user-joined', {
-            userId: user.userId,
-            username: user.username,
-          });
+            // Notify others in the room
+            socket.to(roomId).emit('user-joined', {
+              userId: user.userId,
+              username: user.username,
+            });
 
-          // Get room data and send to the user
-          const room = await RoomService.getRoomById(roomId);
-          if (room) {
-            socket.emit('room-data', {
-              code: room.code,
-              language: room.language,
-              cursors: room.cursors,
-              participants: room.participants,
+            // Get room data and send to the user
+            const room = await RoomService.getRoomById(roomId);
+            if (room) {
+              socket.emit('room-data', {
+                code: room.code,
+                language: room.language,
+                cursors: room.cursors,
+                participants: room.participants,
+              });
+            }
+
+            socket.emit('join-success', { message: result.message });
+          } else {
+            // Handle case where approval is required
+            socket.emit('join-requires-approval', { 
+              message: result.message,
+              requiresApproval: result.requiresApproval 
             });
           }
         } catch (error) {
-          socket.emit('error', { message: 'Failed to join room' });
+          console.error('Join room error:', error);
+          socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to join room' });
+        }
+      });
+
+      // Join room with code
+      socket.on('join-room-with-code', async (data: { joinCode: string }) => {
+        try {
+          const { joinCode } = data;
+          const user = socket.data.user;
+
+          // Try to join the room with code
+          const result = await RoomService.joinRoomWithCode(joinCode, user.userId);
+          
+          if (result.success && result.room) {
+            const roomId = (result.room._id as any).toString();
+            
+            // Join the socket room
+            socket.join(roomId);
+            socket.data.roomId = roomId;
+
+            // Notify others in the room
+            socket.to(roomId).emit('user-joined', {
+              userId: user.userId,
+              username: user.username,
+            });
+
+            // Send room data to the user
+            socket.emit('room-data', {
+              code: result.room.code,
+              language: result.room.language,
+              cursors: result.room.cursors,
+              participants: result.room.participants,
+            });
+
+            socket.emit('join-success', { message: result.message });
+          } else {
+            // Handle case where approval is required
+            socket.emit('join-requires-approval', { 
+              message: result.message,
+              requiresApproval: result.requiresApproval 
+            });
+          }
+        } catch (error) {
+          console.error('Join room with code error:', error);
+          socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to join room' });
+        }
+      });
+
+      // Request to join room
+      socket.on('request-to-join', async (data: { roomId: string }) => {
+        try {
+          const { roomId } = data;
+          const user = socket.data.user;
+
+          const result = await RoomService.requestToJoinRoom({
+            roomId,
+            userId: user.userId,
+            username: user.username
+          });
+
+          socket.emit('join-request-sent', { message: result.message });
+        } catch (error) {
+          console.error('Request to join error:', error);
+          socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to send join request' });
+        }
+      });
+
+      // Approve join request (room owner only)
+      socket.on('approve-join-request', async (data: { roomId: string, requestUserId: string }) => {
+        try {
+          const { roomId, requestUserId } = data;
+          const user = socket.data.user;
+
+          await RoomService.approveJoinRequest(roomId, user.userId, requestUserId);
+          
+          socket.emit('join-request-approved', { 
+            message: 'Join request approved successfully',
+            userId: requestUserId
+          });
+        } catch (error) {
+          console.error('Approve join request error:', error);
+          socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to approve join request' });
+        }
+      });
+
+      // Reject join request (room owner only)
+      socket.on('reject-join-request', async (data: { roomId: string, requestUserId: string }) => {
+        try {
+          const { roomId, requestUserId } = data;
+          const user = socket.data.user;
+
+          await RoomService.rejectJoinRequest(roomId, user.userId, requestUserId);
+          
+          socket.emit('join-request-rejected', { 
+            message: 'Join request rejected successfully',
+            userId: requestUserId
+          });
+        } catch (error) {
+          console.error('Reject join request error:', error);
+          socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to reject join request' });
         }
       });
 

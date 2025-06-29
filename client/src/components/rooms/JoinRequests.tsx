@@ -28,9 +28,13 @@ const JoinRequests: React.FC<JoinRequestsProps> = ({ roomId, onClose, onRequestH
   const fetchRequests = async () => {
     try {
       const data = await roomService.getPendingRequests(roomId);
-      setRequests(data);
+      console.log('Pending requests data:', data);
+      setRequests(data.map((req: any) => ({
+        ...req,
+        userId: typeof req.userId === 'object' && req.userId._id ? req.userId._id : req.userId
+      })));
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to fetch requests');
+      setError(err.response?.data?.error || 'Failed to fetch requests');
     } finally {
       setLoading(false);
     }
@@ -42,7 +46,7 @@ const JoinRequests: React.FC<JoinRequestsProps> = ({ roomId, onClose, onRequestH
       setRequests(prev => prev.filter(req => req.userId !== requestUserId));
       onRequestHandled();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to approve request');
+      setError(err.response?.data?.error || 'Failed to approve request');
     }
   };
 
@@ -52,7 +56,7 @@ const JoinRequests: React.FC<JoinRequestsProps> = ({ roomId, onClose, onRequestH
       setRequests(prev => prev.filter(req => req.userId !== requestUserId));
       onRequestHandled();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to reject request');
+      setError(err.response?.data?.error || 'Failed to reject request');
     }
   };
 

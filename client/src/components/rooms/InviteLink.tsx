@@ -28,7 +28,7 @@ const InviteLink: React.FC = () => {
           setError('Room not found or invite link is invalid');
         }
       } catch (err: any) {
-        setError(err.response?.data?.message || 'Failed to load room information');
+        setError(err.response?.data?.error || 'Failed to load room information');
       } finally {
         setLoading(false);
       }
@@ -50,17 +50,19 @@ const InviteLink: React.FC = () => {
       navigate(`/room/${room.id}`);
     } catch (err: any) {
       // Check if it's an approval required error
-      if (err.response?.status === 403 && err.response?.data?.message?.includes('approval')) {
+      if (err.response?.status === 403 && 
+          (err.response?.data?.requiresApproval || 
+           err.response?.data?.message?.includes('approval'))) {
         try {
           // Get room info by code to get the roomId
           const roomInfo = await roomService.getRoomByJoinCode(joinCode!);
           await roomService.requestJoinRoom(roomInfo.id);
           setError('Join request sent! The room owner will be notified.');
         } catch (requestErr: any) {
-          setError(requestErr.response?.data?.message || 'Failed to send join request');
+          setError(requestErr.response?.data?.error || 'Failed to send join request');
         }
       } else {
-        setError(err.response?.data?.message || 'Failed to join room');
+        setError(err.response?.data?.message || err.response?.data?.error || 'Failed to join room');
       }
       setLoading(false);
     }

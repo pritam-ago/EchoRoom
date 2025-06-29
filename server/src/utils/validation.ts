@@ -18,16 +18,14 @@ export const roomValidation = {
     name: Joi.string().min(1).max(100).required(),
     description: Joi.string().max(500).optional(),
     language: Joi.string().default('javascript'),
-    isPrivate: Joi.boolean().default(false),
-    requiresApproval: Joi.boolean().default(false),
+    roomType: Joi.string().valid('public', 'private', 'request_to_join').default('public'),
   }),
   
   update: Joi.object({
     name: Joi.string().min(1).max(100).optional(),
     description: Joi.string().max(500).optional(),
     language: Joi.string().optional(),
-    isPrivate: Joi.boolean().optional(),
-    requiresApproval: Joi.boolean().optional(),
+    roomType: Joi.string().valid('public', 'private', 'request_to_join').optional(),
   }),
   
   join: Joi.object({

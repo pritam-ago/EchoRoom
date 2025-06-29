@@ -28,7 +28,7 @@ const Register: React.FC = () => {
       await register(username, email, password);
       navigate('/');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to register');
+      setError(err.response?.data?.error || 'Failed to register');
     } finally {
       setLoading(false);
     }

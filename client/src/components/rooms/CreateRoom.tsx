@@ -47,7 +47,8 @@ const CreateRoom: React.FC = () => {
       });
       navigate(`/room/${room.id}`);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to create room');
+      console.log('Create room error:', err);
+      setError(err.response?.data?.error || 'Failed to create room');
     } finally {
       setLoading(false);
     }

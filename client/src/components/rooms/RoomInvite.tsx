@@ -22,7 +22,7 @@ const RoomInvite: React.FC<RoomInviteProps> = ({ roomId, roomName, onClose }) =>
       const result = await roomService.generateJoinCode(roomId);
       setJoinCode(result.joinCode);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to generate join code');
+      setError(err.response?.data?.error || 'Failed to generate join code');
     } finally {
       setLoading(false);
     }
