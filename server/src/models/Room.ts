@@ -34,6 +34,7 @@ export interface IRoom extends Document {
   }>;
   createdAt: Date;
   updatedAt: Date;
+  rejectedRequests?: mongoose.Types.ObjectId[];
 }
 
 const userCursorSchema = new Schema<IUserCursor>({
@@ -117,6 +118,11 @@ const roomSchema = new Schema<IRoom>({
     requestedAt: {
       type: Date,
     },
+  }],
+  rejectedRequests: [{
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    default: [],
   }],
 }, {
   timestamps: true,

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { roomService } from '../../services/roomService';
 import JoinRoom from './JoinRoom';
+import Notification from './Notification';
 import './Rooms.css';
 
 interface Room {
@@ -25,10 +26,19 @@ const RoomList: React.FC = () => {
   const [error, setError] = useState('');
   const [showJoinModal, setShowJoinModal] = useState(false);
   const { user, logout } = useAuth();
+  const location = useLocation();
+  const [showRejectionNotification, setShowRejectionNotification] = useState(
+    location.state && location.state.rejectedFromRoom ? true : false
+  );
 
   useEffect(() => {
     fetchRooms();
-  }, []);
+    // Hide notification after 3 seconds if shown
+    if (showRejectionNotification) {
+      const timer = setTimeout(() => setShowRejectionNotification(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showRejectionNotification]);
 
   const fetchRooms = async () => {
     try {
@@ -55,6 +65,14 @@ const RoomList: React.FC = () => {
 
   return (
     <div className="rooms-container">
+      {showRejectionNotification && (
+        <Notification
+          message="You have been rejected from the room."
+          type="error"
+          duration={3000}
+          onClose={() => setShowRejectionNotification(false)}
+        />
+      )}
       <header className="rooms-header">
         <div className="header-content">
           <h1>EchoRoom</h1>

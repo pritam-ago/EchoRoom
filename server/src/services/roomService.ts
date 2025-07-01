@@ -137,6 +137,11 @@ export class RoomService {
       };
     }
 
+    // Prevent rejected users from joining
+    if (room.rejectedRequests && room.rejectedRequests.some(id => id.toString() === userId)) {
+      throw createError('You have been rejected from this room.', 403);
+    }
+
     switch (room.roomType) {
       case RoomType.PUBLIC:
         room.participants.push(new mongoose.Types.ObjectId(userId));
@@ -211,6 +216,11 @@ export class RoomService {
       };
     }
 
+    // Prevent rejected users from joining
+    if (room.rejectedRequests && room.rejectedRequests.some(id => id.toString() === userId)) {
+      throw createError('You have been rejected from this room.', 403);
+    }
+
     // Check room type
     switch (room.roomType) {
       case RoomType.PUBLIC:
@@ -274,6 +284,11 @@ export class RoomService {
 
     if (roomCheck.roomType !== RoomType.REQUEST_TO_JOIN) {
       throw createError('This room does not require join requests', 400);
+    }
+
+    // Prevent rejected users from requesting again
+    if (roomCheck.rejectedRequests && roomCheck.rejectedRequests.some(id => id.toString() === userId)) {
+      throw createError('You have been rejected from this room.', 403);
     }
 
     // Check if user is already a participant
@@ -410,7 +425,8 @@ export class RoomService {
         'pendingRequests.userId': new mongoose.Types.ObjectId(requestUserId)
       },
       {
-        $pull: { pendingRequests: { userId: new mongoose.Types.ObjectId(requestUserId) } }
+        $pull: { pendingRequests: { userId: new mongoose.Types.ObjectId(requestUserId) } },
+        $addToSet: { rejectedRequests: new mongoose.Types.ObjectId(requestUserId) }
       },
       { new: true }
     );

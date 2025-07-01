@@ -54,7 +54,9 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ roomId, onApproved, onRejecte
     socketInstance.on('join_request_approved', (data) => {
       if (data.roomId === roomId) {
         if (onApproved) onApproved();
-        navigate(`/rooms/${roomId}`);
+        setTimeout(() => {
+          navigate(`/room/${roomId}`, { state: { approvedFromWaiting: true } });
+        }, 1000);
       }
     });
 
@@ -62,6 +64,9 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ roomId, onApproved, onRejecte
       if (data.roomId === roomId) {
         setRejected(true);
         if (onRejected) onRejected();
+        setTimeout(() => {
+          navigate('/', { state: { rejectedFromRoom: true } });
+        }, 1000);
       }
     });
 
@@ -109,16 +114,8 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ roomId, onApproved, onRejecte
   }
 
   if (rejected) {
-    return (
-      <div className="waiting-room-container">
-        <div className="waiting-room-card">
-          <div className="error-message">Your join request was rejected by the host.</div>
-          <button onClick={() => navigate('/')} className="back-button">
-            Back to Rooms
-          </button>
-        </div>
-      </div>
-    );
+    // Wait for redirect
+    return null;
   }
 
   return (
