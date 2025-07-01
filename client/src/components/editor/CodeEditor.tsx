@@ -105,6 +105,7 @@ const CodeEditor: React.FC = () => {
       }
     });
 
+    // Listen for when the current user joins the room
     socket.on('user-joined', (data: { userId: string; username: string }) => {
       setParticipants(prev => {
         const existing = prev.find(p => p.userId === data.userId);
@@ -117,6 +118,15 @@ const CodeEditor: React.FC = () => {
       // Show notification for room owner when someone joins
       if (isRoomOwner) {
         addNotification(`${data.username} joined the room`, 'success');
+      }
+      
+      // If the current user joined, clear waiting state and refresh room data
+      if (data.userId === user?.id) {
+        console.log('Current user joined the room, clearing waiting state');
+        setWaitingForApproval(false);
+        setApprovalMessage('');
+        // Refresh room data to ensure we have the latest state
+        fetchRoomData();
       }
     });
 
@@ -148,15 +158,21 @@ const CodeEditor: React.FC = () => {
     socket.on('join_request_approved', (data) => {
       console.log('Join request approved:', data);
       setWaitingForApproval(false);
-      setApprovalMessage('Your join request has been approved! Redirecting...');
+      setApprovalMessage('Your join request has been approved! Loading room...');
       
       // Show success notification
       addNotification('Your join request has been approved!', 'success');
       
-      setTimeout(() => {
+      // Refresh room data to get updated participant status
+      setTimeout(async () => {
         setApprovalMessage('');
-        // Navigate to the room
-        window.location.href = `/room/${data.roomId}`;
+        try {
+          await fetchRoomData();
+        } catch (err) {
+          console.error('Failed to refresh room data:', err);
+          // Fallback to page reload if refresh fails
+          window.location.reload();
+        }
       }, 1500);
     });
 
@@ -180,8 +196,12 @@ const CodeEditor: React.FC = () => {
     });
 
     socket.on('error', (data: { message: string }) => {
-      setError(data.message);
-      addNotification(data.message, 'error');
+      console.error('[Socket Error]', data.message);
+      // Only show notification for cursor errors if not 403/404
+      if (!data.message.includes('cursor') || (!data.message.includes('403') && !data.message.includes('404'))) {
+        setError(data.message);
+        addNotification(data.message, 'error');
+      }
     });
 
     // Fetch room data
@@ -212,15 +232,17 @@ const CodeEditor: React.FC = () => {
       
       // Check if current user is room owner
       const ownerId = roomData.owner?._id;
-      setIsRoomOwner(ownerId === user?.id);
+      const isOwner = ownerId === user?.id;
+      setIsRoomOwner(isOwner);
       
-      // Check if user is a participant
-      const isParticipant = roomData.participants?.some((p: any) => 
-        (typeof p === 'string' ? p : p._id || p.userId) === user?.id
-      );
+      // Check if user is a participant (handle both string and object formats)
+      const isParticipant = roomData.participants?.some((p: any) => {
+        const participantId = typeof p === 'string' ? p : p._id || p.userId;
+        return participantId === user?.id;
+      });
       
       // If user is not the owner and not a participant, they might be waiting for approval
-      if (!isRoomOwner && !isParticipant) {
+      if (!isOwner && !isParticipant) {
         // Check if user has a pending join request
         try {
           const hasPendingRequest = await roomService.hasPendingRequest(roomId!);
@@ -238,10 +260,14 @@ const CodeEditor: React.FC = () => {
             return;
           }
         }
+      } else if (isParticipant) {
+        // User is a participant, make sure waiting state is cleared
+        setWaitingForApproval(false);
+        setApprovalMessage('');
       }
       
       // If user is owner, fetch pending requests count
-      if (isRoomOwner) {
+      if (isOwner) {
         try {
           const requests = await roomService.getPendingRequests(roomId!);
           setPendingRequestsCount(requests.length);
@@ -269,12 +295,13 @@ const CodeEditor: React.FC = () => {
 
     // Add cursor change listener
     editor.onDidChangeCursorPosition((e: any) => {
-      if (socketRef.current && connected) {
+      // Only emit if user is a participant
+      const isParticipant = participants.some(p => p.userId === user?.id);
+      if (socketRef.current && connected && isParticipant) {
         const position = {
           line: e.position.lineNumber,
           ch: e.position.column
         };
-        
         socketRef.current.emit('cursor-move', {
           roomId,
           position,
@@ -382,8 +409,8 @@ const CodeEditor: React.FC = () => {
           <div className="participants">
             <span className="participants-count">{participants.length} online</span>
             <div className="participants-list">
-              {participants.map((participant) => (
-                <div key={participant.userId} className="participant">
+              {participants.map((participant, idx) => (
+                <div key={participant.userId || idx} className="participant">
                   <span 
                     className="participant-color" 
                     style={{ backgroundColor: participant.color }}
@@ -398,7 +425,7 @@ const CodeEditor: React.FC = () => {
               Invite
             </button>
           )}
-          {isRoomOwner && pendingRequestsCount > 0 && (
+          {isRoomOwner && (
             <button
               onClick={() => setShowJoinRequests(true)}
               className="join-requests-button"

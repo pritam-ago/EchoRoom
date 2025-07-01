@@ -128,7 +128,6 @@ export class RoomService {
       participant => participant.toString() === userId
     );
 
-    // If already a participant, allow join
     if (isAlreadyParticipant) {
       await this.createOrUpdateSession(userId, roomId);
       return {
@@ -138,10 +137,8 @@ export class RoomService {
       };
     }
 
-    // Check room type and handle accordingly
     switch (room.roomType) {
       case RoomType.PUBLIC:
-        // Public rooms - anyone can join
         room.participants.push(new mongoose.Types.ObjectId(userId));
         await room.save();
         await this.createOrUpdateSession(userId, roomId);
@@ -335,6 +332,31 @@ export class RoomService {
   }
 
   static async approveJoinRequest(roomId: string, ownerId: string, requestUserId: string): Promise<IRoom> {
+    console.log(roomId, ownerId, requestUserId);
+
+    const roomBeforeUpdate = await Room.findById(roomId)
+      .populate('pendingRequests.userId', 'username email avatar');
+    
+    if (!roomBeforeUpdate) {
+      throw createError('Room not found', 404);
+    }
+    console.log(roomBeforeUpdate.pendingRequests);
+
+    const pendingRequest = roomBeforeUpdate.pendingRequests.find((req: any) => {
+      if (typeof req.userId === 'object' && req.userId._id) {
+        return req.userId._id.toString() === requestUserId;
+      }
+      return req.userId.toString() === requestUserId;
+    });
+    console.log(pendingRequest);
+    
+    if (!pendingRequest) {
+      throw createError('Join request not found', 404);
+    }
+
+    const username = typeof pendingRequest.userId === 'object' && 'username' in pendingRequest.userId ? 
+      (pendingRequest.userId as any).username : 'Unknown User';
+
     // Use atomic operation to prevent concurrency issues
     const room = await Room.findOneAndUpdate(
       {
@@ -361,6 +383,12 @@ export class RoomService {
       roomId,
       room,
       message: 'Your join request has been approved!'
+    });
+
+    // Emit user-joined event to notify all users in the room
+    socketManager.getIO().to(roomId).emit('user-joined', {
+      userId: requestUserId,
+      username: username
     });
 
     // Notify room owner that request was processed
@@ -505,20 +533,34 @@ export class RoomService {
   }
 
   static async updateCursor(roomId: string, cursor: IUserCursor): Promise<IRoom> {
-    const room = await Room.findOneAndUpdate(
-      { _id: roomId },
-      {
-        $pull: { cursors: { userId: cursor.userId } },
-        $push: { cursors: cursor }
-      },
-      { new: true }
-    );
-    
+    console.log(`[updateCursor] Attempting update: roomId=${roomId}, userId=${cursor.userId}, position=${JSON.stringify(cursor.position)}, color=${cursor.color}`);
+    const room = await Room.findById(roomId);
     if (!room) {
+      console.error(`[updateCursor] Room not found: roomId=${roomId}, userId=${cursor.userId}`);
       throw createError('Room not found', 404);
     }
-    
-    return room;
+    const isParticipant = room.participants.some(
+      participant => participant.toString() === cursor.userId
+    );
+    if (!isParticipant) {
+      console.error(`[updateCursor] User is not a participant: roomId=${roomId}, userId=${cursor.userId}`);
+      throw createError('User is not a participant in this room', 403);
+    }
+    try {
+      const updatedRoom = await Room.findOneAndUpdate(
+        { _id: roomId },
+        {
+          $pull: { cursors: { userId: cursor.userId } },
+          $push: { cursors: cursor }
+        },
+        { new: true }
+      );
+      console.log(`[updateCursor] Success: roomId=${roomId}, userId=${cursor.userId}`);
+      return updatedRoom!;
+    } catch (error) {
+      console.error(`[updateCursor] Error: roomId=${roomId}, userId=${cursor.userId}`, error);
+      throw error;
+    }
   }
 
   static async removeCursor(roomId: string, userId: string): Promise<IRoom | null> {
