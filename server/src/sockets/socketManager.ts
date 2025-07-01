@@ -274,6 +274,13 @@ export class SocketManager {
         }
       });
 
+      // Join user-specific room for direct events
+      socket.on('join-user-room', (data) => {
+        if (data.userId) {
+          socket.join(data.userId);
+        }
+      });
+
       // Disconnect
       socket.on('disconnect', async () => {
         try {

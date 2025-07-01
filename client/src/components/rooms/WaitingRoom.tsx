@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { roomService } from '../../services/roomService';
 import './Rooms.css';
+import { io, Socket } from 'socket.io-client';
 
 interface WaitingRoomProps {
   roomId: string;
@@ -17,6 +18,8 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ roomId, onApproved, onRejecte
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [rejected, setRejected] = useState(false);
 
   useEffect(() => {
     // Fetch room info
@@ -32,6 +35,42 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ roomId, onApproved, onRejecte
     };
 
     fetchRoomInfo();
+  }, [roomId]);
+
+  useEffect(() => {
+    // Setup socket connection for real-time updates
+    const token = localStorage.getItem('token');
+    const socketInstance = io('http://localhost:3001', {
+      auth: { token }
+    });
+
+    socketInstance.on('connect', () => {
+      // Join user-specific room for direct events
+      if (user && user.id) {
+        socketInstance.emit('join-user-room', { userId: user.id });
+      }
+    });
+
+    socketInstance.on('join_request_approved', (data) => {
+      if (data.roomId === roomId) {
+        if (onApproved) onApproved();
+        navigate(`/rooms/${roomId}`);
+      }
+    });
+
+    socketInstance.on('join_request_rejected', (data) => {
+      if (data.roomId === roomId) {
+        setRejected(true);
+        if (onRejected) onRejected();
+      }
+    });
+
+    setSocket(socketInstance);
+
+    return () => {
+      socketInstance.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
 
   const handleCancelRequest = async () => {
@@ -61,6 +100,19 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ roomId, onApproved, onRejecte
       <div className="waiting-room-container">
         <div className="waiting-room-card">
           <div className="error-message">{error}</div>
+          <button onClick={() => navigate('/')} className="back-button">
+            Back to Rooms
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (rejected) {
+    return (
+      <div className="waiting-room-container">
+        <div className="waiting-room-card">
+          <div className="error-message">Your join request was rejected by the host.</div>
           <button onClick={() => navigate('/')} className="back-button">
             Back to Rooms
           </button>

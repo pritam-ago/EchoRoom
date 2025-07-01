@@ -83,6 +83,8 @@ const CodeEditor: React.FC = () => {
     socket.on('connect', () => {
       console.log('Connected to server');
       setConnected(true);
+      // Log user ID for debugging
+      console.log('Current user ID:', user?.id);
       
       // Join the room
       socket.emit('join-room', { roomId });
@@ -145,10 +147,20 @@ const CodeEditor: React.FC = () => {
       );
     });
 
+    // Helper to fetch latest pending requests count
+    const fetchPendingRequestsCount = async () => {
+      try {
+        const requests = await roomService.getPendingRequests(roomId!);
+        setPendingRequestsCount(requests.length);
+      } catch (err) {
+        // Optionally handle error
+      }
+    };
+
     // Real-time join request for host
     socket.on('join_request_received', (data) => {
       if (isRoomOwner) {
-        setPendingRequestsCount(prev => prev + 1);
+        fetchPendingRequestsCount();
         addNotification(`New join request from ${data.username}`, 'info');
         console.log('New join request received:', data);
       }
@@ -156,24 +168,13 @@ const CodeEditor: React.FC = () => {
 
     // Real-time approval for waiting user
     socket.on('join_request_approved', (data) => {
-      console.log('Join request approved:', data);
+      console.log('join_request_approved event received', data);
       setWaitingForApproval(false);
-      setApprovalMessage('Your join request has been approved! Loading room...');
-      
-      // Show success notification
+      setApprovalMessage('Your join request has been approved! Redirecting...');
       addNotification('Your join request has been approved!', 'success');
-      
-      // Refresh room data to get updated participant status
-      setTimeout(async () => {
-        setApprovalMessage('');
-        try {
-          await fetchRoomData();
-        } catch (err) {
-          console.error('Failed to refresh room data:', err);
-          // Fallback to page reload if refresh fails
-          window.location.reload();
-        }
-      }, 1500);
+      setTimeout(() => {
+        window.location.href = `/room/${roomId}`;
+      }, 1000);
     });
 
     // Real-time rejection for waiting user
@@ -187,7 +188,7 @@ const CodeEditor: React.FC = () => {
     // Real-time notification for room owner when request is processed
     socket.on('join_request_processed', (data) => {
       if (isRoomOwner) {
-        setPendingRequestsCount(prev => Math.max(0, prev - 1));
+        fetchPendingRequestsCount();
         const action = data.action === 'approved' ? 'approved' : 
                       data.action === 'rejected' ? 'rejected' : 'cancelled';
         addNotification(`Join request ${action}`, 'info');
